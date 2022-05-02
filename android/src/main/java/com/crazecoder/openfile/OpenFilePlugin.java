@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.util.Log;
 import android.webkit.MimeTypeMap;
 
 import androidx.annotation.NonNull;
@@ -18,6 +19,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.content.PermissionChecker;
+import androidx.documentfile.provider.DocumentFile;
 
 import com.crazecoder.openfile.utils.JsonUtil;
 import com.crazecoder.openfile.utils.MapUtil;
@@ -59,6 +61,7 @@ public class OpenFilePlugin implements MethodCallHandler
     private String filePath;
     private String fileContentUri;
     private String typeString;
+    private boolean usbMassStorage = false;
 
     private boolean isResultSubmitted = false;
 
@@ -90,6 +93,9 @@ public class OpenFilePlugin implements MethodCallHandler
             filePath = call.argument("file_path");
             if (call.hasArgument("file_content_uri")) {
                 fileContentUri = call.argument("file_content_uri");
+            }
+            if (call.hasArgument("usb_mass_storage")) {
+                usbMassStorage = call.argument("usb_mass_storage").equals("true");
             }
             if (call.hasArgument("type") && call.argument("type") != null) {
                 typeString = call.argument("type");
@@ -139,10 +145,23 @@ public class OpenFilePlugin implements MethodCallHandler
             return false;
         }
 
-        File file = new File(filePath);
-        if (!file.exists()) {
-            result(-2, "the " + filePath + " file does not exists");
-            return false;
+        if (usbMassStorage) {
+            try {
+                final DocumentFile fileUri = DocumentFile.fromSingleUri(context, Uri.parse(fileContentUri));
+                if (fileUri == null) {
+                    return false;
+                }
+                return fileUri.exists();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+        } else {
+            File file = new File(filePath);
+            if (!file.exists()) {
+                result(-2, "the " + filePath + " file does not exists");
+                return false;
+            }
         }
         return true;
     }
@@ -167,6 +186,7 @@ public class OpenFilePlugin implements MethodCallHandler
             if (fileContentUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 uri = Uri.parse(fileContentUri);
             }
+            Log.d("OpenFile", "URI: " + uri.toString());
             intent.setDataAndType(uri, typeString);
         } else {
             intent.setDataAndType(Uri.fromFile(new File(filePath)), typeString);

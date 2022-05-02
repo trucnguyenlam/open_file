@@ -21,6 +21,7 @@ class OpenFile {
         String? fileContentUri,
         String linuxDesktopName = "xdg",
         bool linuxByProcess = false,
+        bool usbMassStorage = false,
       }) async {
     assert(filePath != null);
     if (!Platform.isIOS && !Platform.isAndroid) {
@@ -58,6 +59,7 @@ class OpenFile {
       "file_content_uri": fileContentUri,
       "type": type,
       "uti": uti,
+      "usb_mass_storage": usbMassStorage? 'true': 'false'
     };
     final _result = await _channel.invokeMethod('open_file', map);
     final resultMap = json.decode(_result) as Map<String, dynamic>;
