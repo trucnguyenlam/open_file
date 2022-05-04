@@ -95,7 +95,7 @@ public class OpenFilePlugin implements MethodCallHandler
                 fileContentUri = call.argument("file_content_uri");
             }
             if (call.hasArgument("usb_mass_storage")) {
-                usbMassStorage = call.argument("usb_mass_storage").equals("true");
+                usbMassStorage = "true".equals(call.argument("usb_mass_storage"));
             }
             if (call.hasArgument("type") && call.argument("type") != null) {
                 typeString = call.argument("type");
@@ -183,7 +183,7 @@ public class OpenFilePlugin implements MethodCallHandler
             String packageName = context.getPackageName();
             Uri uri = FileProvider.getUriForFile(context, packageName + ".fileProvider.com.crazecoder.openfile", new File(filePath));
             // Android sdk 30, see this https://github.com/crazecoder/open_file/issues/153#issuecomment-874139944
-            if (fileContentUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (fileContentUri != null && (usbMassStorage || Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)) {
                 uri = Uri.parse(fileContentUri);
             }
             Log.d("OpenFile", "URI: " + uri.toString());
