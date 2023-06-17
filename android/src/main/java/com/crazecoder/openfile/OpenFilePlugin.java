@@ -107,10 +107,18 @@ public class OpenFilePlugin implements MethodCallHandler
                     }
                     startActivity();
                 } else {
-                    ActivityCompat.requestPermissions(activity, new String[]{
-                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                    }, REQUEST_CODE);
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        ActivityCompat.requestPermissions(activity, new String[]{
+                                Manifest.permission.READ_EXTERNAL_STORAGE,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE
+                        }, REQUEST_CODE);
+                    } else {
+                        ActivityCompat.requestPermissions(activity, new String[]{
+                                Manifest.permission.READ_MEDIA_IMAGES,
+                                Manifest.permission.READ_MEDIA_AUDIO,
+                                Manifest.permission.READ_MEDIA_VIDEO
+                        }, REQUEST_CODE);
+                    }
                 }
             } else {
                 startActivity();
