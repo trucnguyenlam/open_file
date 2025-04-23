@@ -61,9 +61,11 @@ public class OpenFilePlugin implements MethodCallHandler
     private String fileContentUri;
     private String typeString;
     private boolean usbMassStorage = false;
+    private boolean openWith = false;
 
     private boolean isResultSubmitted = false;
 
+    private static final String TAG = "open_file_plugin";
     private static final int REQUEST_CODE = 33432;
     private static final String TYPE_STRING_APK = "application/vnd.android.package-archive";
 
@@ -94,6 +96,9 @@ public class OpenFilePlugin implements MethodCallHandler
             }
             if (call.hasArgument("usb_mass_storage")) {
                 usbMassStorage = "true".equals(call.argument("usb_mass_storage"));
+            }
+            if (call.hasArgument("open_with")) {
+                openWith = "true".equals(call.argument("open_with"));
             }
             if (call.hasArgument("type") && call.argument("type") != null) {
                 typeString = call.argument("type");
@@ -139,7 +144,7 @@ public class OpenFilePlugin implements MethodCallHandler
             String fileCanonicalPath = new File(filePath).getCanonicalPath();
             return !fileCanonicalPath.startsWith(appDirCanonicalPath);
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Error while calling pathRequiresPermission", e);
             return true;
         }
     }
@@ -158,7 +163,7 @@ public class OpenFilePlugin implements MethodCallHandler
                 }
                 return fileUri.exists();
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Error while calling isFileAvailable", e);
                 return false;
             }
         } else {
@@ -199,7 +204,12 @@ public class OpenFilePlugin implements MethodCallHandler
         int type = 0;
         String message = "done";
         try {
-            activity.startActivity(intent);
+            if (openWith) {
+                Intent chooser = Intent.createChooser(intent, "Open with");
+                activity.startActivity(chooser);
+            } else {
+                activity.startActivity(intent);
+            }
         } catch (ActivityNotFoundException e) {
             type = -1;
             message = "No APP found to open this file。";
