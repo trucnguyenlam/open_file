@@ -118,11 +118,14 @@ public class OpenFilePlugin implements MethodCallHandler
                                 Manifest.permission.WRITE_EXTERNAL_STORAGE
                         }, REQUEST_CODE);
                     } else {
-                        ActivityCompat.requestPermissions(activity, new String[]{
-                                Manifest.permission.READ_MEDIA_IMAGES,
-                                Manifest.permission.READ_MEDIA_AUDIO,
-                                Manifest.permission.READ_MEDIA_VIDEO
-                        }, REQUEST_CODE);
+                        // Android 13 Tiramisu, assuming the permissions are persisted already
+                        Log.d("OpenFile", "On Android 13: assuming persisted permissions on " + filePath);
+//                        ActivityCompat.requestPermissions(activity, new String[]{
+//                                Manifest.permission.READ_MEDIA_IMAGES,
+//                                Manifest.permission.READ_MEDIA_AUDIO,
+//                                Manifest.permission.READ_MEDIA_VIDEO
+//                        }, REQUEST_CODE);
+                        startActivity();
                     }
                 }
             } else {
