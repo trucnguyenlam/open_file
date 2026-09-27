@@ -22,6 +22,27 @@ static NSString *const CHANNEL_NAME = @"open_file";
     [registrar addMethodCallDelegate:instance channel:channel];
 }
 
+- (UIViewController *)topViewController {
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    if (!window) {
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.isKeyWindow) {
+                window = w;
+                break;
+            }
+        }
+    }
+    if (!window) {
+        window = [UIApplication sharedApplication].windows.firstObject;
+    }
+    UIViewController *topController = window.rootViewController;
+    while (topController.presentedViewController) {
+        topController = topController.presentedViewController;
+    }
+    NSLog(@"[OpenFilePlugin] topViewController resolved to: %@ (window: %@)", topController, window);
+    return topController;
+}
+
 - (instancetype)initWithViewController:(UIViewController *)viewController {
     self = [super init];
     if (self) {
@@ -44,6 +65,7 @@ static NSString *const CHANNEL_NAME = @"open_file";
         NSFileManager *fileManager=[NSFileManager defaultManager];
         BOOL fileExist=[fileManager fileExistsAtPath:msg];
         if(fileExist){
+            NSLog(@"[OpenFilePlugin] File exists at path: %@", msg);
             //            NSURL *resourceToOpen = [NSURL fileURLWithPath:msg];
 //            NSString *exestr = [[msg pathExtension] lowercaseString];
             _documentController = [UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:msg]];
@@ -52,6 +74,9 @@ static NSString *const CHANNEL_NAME = @"open_file";
             BOOL isBlank = [self isBlankString:uti];
             if(!isBlank){
                 _documentController.UTI = uti;
+                NSLog(@"[OpenFilePlugin] Using provided UTI: %@", uti);
+            } else {
+                NSLog(@"[OpenFilePlugin] No UTI provided.");
             }
 //             else{
 //                 if([exestr isEqualToString:@"rtf"]){
@@ -115,11 +140,25 @@ static NSString *const CHANNEL_NAME = @"open_file";
 //                 }
 //             }
             @try {
+                NSLog(@"[OpenFilePlugin] Attempting to present preview animated.");
                 BOOL previewSucceeded = [_documentController presentPreviewAnimated:YES];
+                NSLog(@"[OpenFilePlugin] presentPreviewAnimated result: %d", previewSucceeded);
+                
                 if(!previewSucceeded){
-                    [_documentController presentOpenInMenuFromRect:CGRectMake(500,20,100,100) inView:_viewController.view animated:YES];
+                    NSLog(@"[OpenFilePlugin] Preview failed, attempting to present open in menu from rect.");
+                    BOOL menuSucceeded = [_documentController presentOpenInMenuFromRect:[self topViewController].view.bounds inView:[self topViewController].view animated:YES];
+                    NSLog(@"[OpenFilePlugin] presentOpenInMenuFromRect result: %d", menuSucceeded);
+                    
+                    if (!menuSucceeded) {
+                        NSLog(@"[OpenFilePlugin] No app found to open this file, returning error to Flutter.");
+                        NSDictionary * dict = @{@"message":@"No app found to open this file", @"type":@-4};
+                        NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
+                        NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+                        result(json);
+                    }
                 }
             }@catch (NSException *exception) {
+                NSLog(@"[OpenFilePlugin] Exception occurred: %@", exception);
                 NSDictionary * dict = @{@"message":@"File opened incorrectly。", @"type":@-4};
                 NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
                 NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
@@ -154,7 +193,7 @@ static NSString *const CHANNEL_NAME = @"open_file";
 }
 
 - (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
-    return  _viewController;
+    return [self topViewController];
 }
 
 - (BOOL) isBlankString:(NSString *)string {
