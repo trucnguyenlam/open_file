@@ -5,55 +5,77 @@
 
 static NSString *const CHANNEL_NAME = @"open_file";
 
+// Extends FlutterPluginRegistrar to expose viewController available on the
+// concrete FlutterViewControllerRegistrar class used at runtime.
+@protocol OpenFileFlutterPluginRegistrar <FlutterPluginRegistrar>
+@property(nonatomic, readonly, weak) UIViewController *viewController;
+@end
+
 @implementation OpenFilePlugin{
     FlutterResult _result;
-    UIViewController *_viewController;
     UIDocumentInteractionController *_documentController;
     UIDocumentInteractionController *_interactionController;
+    NSObject<OpenFileFlutterPluginRegistrar> *_registrar;
 }
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     FlutterMethodChannel* channel = [FlutterMethodChannel
                                      methodChannelWithName:CHANNEL_NAME
                                      binaryMessenger:[registrar messenger]];
-    UIViewController *viewController =
-    [UIApplication sharedApplication].delegate.window.rootViewController;
-    OpenFilePlugin* instance = [[OpenFilePlugin alloc] initWithViewController:viewController];
+    OpenFilePlugin* instance = [[OpenFilePlugin alloc] initWithRegistrar:registrar];
     [registrar addMethodCallDelegate:instance channel:channel];
 }
 
-- (UIViewController *)topViewController {
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
-    if (!window) {
-        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-            if (w.isKeyWindow) {
-                window = w;
-                break;
-            }
-        }
-    }
-    if (!window || !window.rootViewController) {
-        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-            if (w.rootViewController) {
-                window = w;
-                break;
-            }
-        }
-    }
-    UIViewController *topController = window.rootViewController;
-    while (topController.presentedViewController) {
-        topController = topController.presentedViewController;
-    }
-    NSLog(@"[OpenFilePlugin] topViewController resolved to: %@ (window: %@)", topController, window);
-    return topController;
-}
-
-- (instancetype)initWithViewController:(UIViewController *)viewController {
+- (instancetype)initWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     self = [super init];
     if (self) {
-        _viewController = viewController;
+        _registrar = (NSObject<OpenFileFlutterPluginRegistrar> *)registrar;
     }
     return self;
+}
+
+// Returns the root view controller using the registrar's viewController for
+// UISceneDelegate compatibility (required for Flutter 3.38+ / iOS 26+).
+// Falls back to scene enumeration for environments where the registrar does
+// not expose viewController.
+- (UIViewController *)rootViewController {
+    // 1. Preferred: ask the Flutter registrar for the view controller
+    if ([_registrar respondsToSelector:@selector(viewController)]) {
+        UIViewController *vc = _registrar.viewController;
+        if (vc != nil) {
+            NSLog(@"[OpenFilePlugin] rootViewController from registrar: %@", vc);
+            return vc;
+        }
+    }
+    // 2. iOS 15+: use UIWindowScene.keyWindow (non-deprecated)
+    if (@available(iOS 15, *)) {
+        for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindow *keyWindow = ((UIWindowScene *)scene).keyWindow;
+                if (keyWindow != nil) {
+                    NSLog(@"[OpenFilePlugin] rootViewController from scene keyWindow: %@", keyWindow.rootViewController);
+                    return keyWindow.rootViewController;
+                }
+            }
+        }
+        return nil;
+    } else if (@available(iOS 13, *)) {
+        // 3. iOS 13-14: iterate scene windows
+        for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                    if (window.isKeyWindow) {
+                        NSLog(@"[OpenFilePlugin] rootViewController from scene window: %@", window.rootViewController);
+                        return window.rootViewController;
+                    }
+                }
+            }
+        }
+        return nil;
+    } else {
+        // 4. Pre-iOS 13 fallback
+        return [UIApplication sharedApplication].delegate.window.rootViewController;
+    }
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -71,8 +93,6 @@ static NSString *const CHANNEL_NAME = @"open_file";
         BOOL fileExist=[fileManager fileExistsAtPath:msg];
         if(fileExist){
             NSLog(@"[OpenFilePlugin] File exists at path: %@", msg);
-            //            NSURL *resourceToOpen = [NSURL fileURLWithPath:msg];
-//            NSString *exestr = [[msg pathExtension] lowercaseString];
             _documentController = [UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:msg]];
             _documentController.delegate = self;
             NSString *uti = call.arguments[@"uti"];
@@ -81,77 +101,32 @@ static NSString *const CHANNEL_NAME = @"open_file";
                 _documentController.UTI = uti;
                 NSLog(@"[OpenFilePlugin] Using provided UTI: %@", uti);
             } else {
-                NSLog(@"[OpenFilePlugin] No UTI provided.");
+                // Auto-detect UTI from file extension
+                NSString *detectedUTI = [self utiForFileExtension:[[msg pathExtension] lowercaseString]];
+                if (detectedUTI) {
+                    _documentController.UTI = detectedUTI;
+                    NSLog(@"[OpenFilePlugin] Auto-detected UTI: %@ for extension: %@", detectedUTI, [[msg pathExtension] lowercaseString]);
+                } else {
+                    NSLog(@"[OpenFilePlugin] No UTI provided or detected for extension: %@", [[msg pathExtension] lowercaseString]);
+                }
             }
-//             else{
-//                 if([exestr isEqualToString:@"rtf"]){
-//                     _documentController.UTI=@"public.rtf";
-//                 }else if([exestr isEqualToString:@"txt"]){
-//                     _documentController.UTI=@"public.plain-text";
-//                 }else if([exestr isEqualToString:@"html"]||
-//                          [exestr isEqualToString:@"htm"]){
-//                     _documentController.UTI=@"public.html";
-//                 }else if([exestr isEqualToString:@"xml"]){
-//                     _documentController.UTI=@"public.xml";
-//                 }else if([exestr isEqualToString:@"tar"]){
-//                     _documentController.UTI=@"public.tar-archive";
-//                 }else if([exestr isEqualToString:@"gz"]||
-//                          [exestr isEqualToString:@"gzip"]){
-//                     _documentController.UTI=@"org.gnu.gnu-zip-archive";
-//                 }else if([exestr isEqualToString:@"tgz"]){
-//                     _documentController.UTI=@"org.gnu.gnu-zip-tar-archive";
-//                 }else if([exestr isEqualToString:@"jpg"]||
-//                          [exestr isEqualToString:@"jpeg"]){
-//                     _documentController.UTI=@"public.jpeg";
-//                 }else if([exestr isEqualToString:@"png"]){
-//                     _documentController.UTI=@"public.png";
-//                 }else if([exestr isEqualToString:@"avi"]){
-//                     _documentController.UTI=@"public.avi";
-//                 }else if([exestr isEqualToString:@"mpg"]||
-//                          [exestr isEqualToString:@"mpeg"]){
-//                     _documentController.UTI=@"public.mpeg";
-//                 }else if([exestr isEqualToString:@"mp4"]){
-//                     _documentController.UTI=@"public.mpeg-4";
-//                 }else if([exestr isEqualToString:@"3gpp"]||
-//                          [exestr isEqualToString:@"3gp"]){
-//                     _documentController.UTI=@"public.3gpp";
-//                 }else if([exestr isEqualToString:@"mp3"]){
-//                     _documentController.UTI=@"public.mp3";
-//                 }else if([exestr isEqualToString:@"zip"]){
-//                     _documentController.UTI=@"com.pkware.zip-archive";
-//                 }else if([exestr isEqualToString:@"gif"]){
-//                     _documentController.UTI=@"com.compuserve.gif";
-//                 }else if([exestr isEqualToString:@"bmp"]){
-//                     _documentController.UTI=@"com.microsoft.bmp";
-//                 }else if([exestr isEqualToString:@"ico"]){
-//                     _documentController.UTI=@"com.microsoft.ico";
-//                 }else if([exestr isEqualToString:@"doc"]){
-//                     _documentController.UTI=@"com.microsoft.word.doc";
-//                 }else if([exestr isEqualToString:@"xls"]){
-//                     _documentController.UTI=@"com.microsoft.excel.xls";
-//                 }else if([exestr isEqualToString:@"ppt"]){
-//                     _documentController.UTI=@"com.microsoft.powerpoint.​ppt";
-//                 }else if([exestr isEqualToString:@"wav"]){
-//                     _documentController.UTI=@"com.microsoft.waveform-​audio";
-//                 }else if([exestr isEqualToString:@"wm"]){
-//                     _documentController.UTI=@"com.microsoft.windows-​media-wm";
-//                 }else if([exestr isEqualToString:@"wmv"]){
-//                     _documentController.UTI=@"com.microsoft.windows-​media-wmv";
-//                 }else if([exestr isEqualToString:@"pdf"]){
-//                     _documentController.UTI=@"com.adobe.pdf";
-//                 }else {
-//                     NSLog(@"doc type not supported for preview");
-//                     NSLog(@"%@", exestr);
-//                 }
-//             }
             @try {
+                UIViewController *rootViewController = [self rootViewController];
+                if (!rootViewController) {
+                    NSLog(@"[OpenFilePlugin] ERROR: rootViewController is nil!");
+                    NSDictionary * dict = @{@"message":@"the root view controller could not be found", @"type":@-4};
+                    NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
+                    NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+                    result(json);
+                    return;
+                }
                 NSLog(@"[OpenFilePlugin] Attempting to present preview animated.");
                 BOOL previewSucceeded = [_documentController presentPreviewAnimated:YES];
                 NSLog(@"[OpenFilePlugin] presentPreviewAnimated result: %d", previewSucceeded);
                 
                 if(!previewSucceeded){
                     NSLog(@"[OpenFilePlugin] Preview failed, attempting to present open in menu from rect.");
-                    BOOL menuSucceeded = [_documentController presentOpenInMenuFromRect:[self topViewController].view.bounds inView:[self topViewController].view animated:YES];
+                    BOOL menuSucceeded = [_documentController presentOpenInMenuFromRect:rootViewController.view.bounds inView:rootViewController.view animated:YES];
                     NSLog(@"[OpenFilePlugin] presentOpenInMenuFromRect result: %d", menuSucceeded);
                     
                     if (!menuSucceeded) {
@@ -164,7 +139,7 @@ static NSString *const CHANNEL_NAME = @"open_file";
                 }
             }@catch (NSException *exception) {
                 NSLog(@"[OpenFilePlugin] Exception occurred: %@", exception);
-                NSDictionary * dict = @{@"message":@"File opened incorrectly。", @"type":@-4};
+                NSDictionary * dict = @{@"message":@"File opened incorrectly.", @"type":@-4};
                 NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
                 NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
                 result(json);
@@ -198,7 +173,49 @@ static NSString *const CHANNEL_NAME = @"open_file";
 }
 
 - (UIViewController *)documentInteractionControllerViewControllerForPreview:(UIDocumentInteractionController *)controller {
-    return [self topViewController];
+    return [self rootViewController];
+}
+
+- (NSString *)utiForFileExtension:(NSString *)ext {
+    // Ebook formats
+    if ([ext isEqualToString:@"epub"]) return @"org.idpf.epub-container";
+    if ([ext isEqualToString:@"mobi"]) return @"com.amazon.mobi8-ebook";
+    if ([ext isEqualToString:@"azw3"] || [ext isEqualToString:@"azw"]) return @"com.amazon.kindle.azw";
+    if ([ext isEqualToString:@"cbz"]) return @"com.simplecomic.cbz-archive";
+    if ([ext isEqualToString:@"cbr"]) return @"com.simplecomic.cbr-archive";
+    if ([ext isEqualToString:@"fb2"]) return @"public.xml";
+    if ([ext isEqualToString:@"djvu"] || [ext isEqualToString:@"djv"]) return @"image.djvu";
+    // Document formats
+    if ([ext isEqualToString:@"pdf"]) return @"com.adobe.pdf";
+    if ([ext isEqualToString:@"rtf"]) return @"public.rtf";
+    if ([ext isEqualToString:@"txt"]) return @"public.plain-text";
+    if ([ext isEqualToString:@"html"] || [ext isEqualToString:@"htm"]) return @"public.html";
+    if ([ext isEqualToString:@"xml"]) return @"public.xml";
+    if ([ext isEqualToString:@"doc"]) return @"com.microsoft.word.doc";
+    if ([ext isEqualToString:@"docx"]) return @"org.openxmlformats.wordprocessingml.document";
+    if ([ext isEqualToString:@"xls"]) return @"com.microsoft.excel.xls";
+    if ([ext isEqualToString:@"xlsx"]) return @"org.openxmlformats.spreadsheetml.sheet";
+    if ([ext isEqualToString:@"ppt"]) return @"com.microsoft.powerpoint.ppt";
+    if ([ext isEqualToString:@"pptx"]) return @"org.openxmlformats.presentationml.presentation";
+    // Image formats
+    if ([ext isEqualToString:@"jpg"] || [ext isEqualToString:@"jpeg"]) return @"public.jpeg";
+    if ([ext isEqualToString:@"png"]) return @"public.png";
+    if ([ext isEqualToString:@"gif"]) return @"com.compuserve.gif";
+    if ([ext isEqualToString:@"bmp"]) return @"com.microsoft.bmp";
+    if ([ext isEqualToString:@"ico"]) return @"com.microsoft.ico";
+    // Audio/Video formats
+    if ([ext isEqualToString:@"mp3"]) return @"public.mp3";
+    if ([ext isEqualToString:@"mp4"]) return @"public.mpeg-4";
+    if ([ext isEqualToString:@"avi"]) return @"public.avi";
+    if ([ext isEqualToString:@"mpg"] || [ext isEqualToString:@"mpeg"]) return @"public.mpeg";
+    if ([ext isEqualToString:@"wav"]) return @"com.microsoft.waveform-audio";
+    if ([ext isEqualToString:@"wmv"]) return @"com.microsoft.windows-media-wmv";
+    // Archive formats
+    if ([ext isEqualToString:@"zip"]) return @"com.pkware.zip-archive";
+    if ([ext isEqualToString:@"tar"]) return @"public.tar-archive";
+    if ([ext isEqualToString:@"gz"] || [ext isEqualToString:@"gzip"]) return @"org.gnu.gnu-zip-archive";
+    if ([ext isEqualToString:@"tgz"]) return @"org.gnu.gnu-zip-tar-archive";
+    return nil;
 }
 
 - (BOOL) isBlankString:(NSString *)string {
