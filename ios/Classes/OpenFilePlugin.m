@@ -32,8 +32,13 @@ static NSString *const CHANNEL_NAME = @"open_file";
             }
         }
     }
-    if (!window) {
-        window = [UIApplication sharedApplication].windows.firstObject;
+    if (!window || !window.rootViewController) {
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.rootViewController) {
+                window = w;
+                break;
+            }
+        }
     }
     UIViewController *topController = window.rootViewController;
     while (topController.presentedViewController) {
