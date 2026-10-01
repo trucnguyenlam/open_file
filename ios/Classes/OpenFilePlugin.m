@@ -120,22 +120,24 @@ static NSString *const CHANNEL_NAME = @"open_file";
                     result(json);
                     return;
                 }
-                NSLog(@"[OpenFilePlugin] Attempting to present preview animated.");
-                BOOL previewSucceeded = [_documentController presentPreviewAnimated:YES];
-                NSLog(@"[OpenFilePlugin] presentPreviewAnimated result: %d", previewSucceeded);
                 
-                if(!previewSucceeded){
-                    NSLog(@"[OpenFilePlugin] Preview failed, attempting to present open in menu from rect.");
-                    BOOL menuSucceeded = [_documentController presentOpenInMenuFromRect:rootViewController.view.bounds inView:rootViewController.view animated:YES];
-                    NSLog(@"[OpenFilePlugin] presentOpenInMenuFromRect result: %d", menuSucceeded);
-                    
-                    if (!menuSucceeded) {
-                        NSLog(@"[OpenFilePlugin] No app found to open this file, returning error to Flutter.");
-                        NSDictionary * dict = @{@"message":@"No app found to open this file", @"type":@-4};
-                        NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
-                        NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-                        result(json);
-                    }
+                
+                NSLog(@"[OpenFilePlugin] Attempting to present open in menu from rect directly.");
+                BOOL menuSucceeded = [_documentController presentOpenInMenuFromRect:CGRectMake(rootViewController.view.bounds.size.width / 2, rootViewController.view.bounds.size.height / 2, 1, 1) inView:rootViewController.view animated:YES];
+                NSLog(@"[OpenFilePlugin] presentOpenInMenuFromRect result: %d", menuSucceeded);
+                
+                if (!menuSucceeded) {
+                    NSLog(@"[OpenFilePlugin] No app found to open this file, returning error to Flutter.");
+                    NSDictionary * dict = @{@"message":@"No app found to open this file", @"type":@-4};
+                    NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
+                    NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+                    result(json);
+                } else {
+                    NSLog(@"[OpenFilePlugin] Menu presentation succeeded, returning done to Flutter immediately to prevent hang.");
+                    NSDictionary * dict = @{@"message":@"done", @"type":@0};
+                    NSData * jsonData = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
+                    NSString * json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+                    result(json);
                 }
             }@catch (NSException *exception) {
                 NSLog(@"[OpenFilePlugin] Exception occurred: %@", exception);
